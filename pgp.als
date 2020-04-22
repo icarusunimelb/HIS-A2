@@ -122,9 +122,16 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 //
 // YOUR TASK: Describe in comments the pre and post-conditions (3 marks)
 //
-// Precondition:  <FILL IN HERE>
+// Precondition:  - k hasn't been registered in the server;
+//		      - t is a vaild token, which means t is not CONFIRMED;
+//		      - network contained a valid RegisterRequest message for k and id;
+//		      - the server doesn't have any (Key, Identity, Token) triples contain t;
 //
-// Postcondition: <FILL IN HERE>
+// Postcondition: - network now contains a valid RegisterResponse message for id and t;
+// 		       - in the current network,  the RegisterRequest message mreq has been
+//			replaced by the RegisterResponse message mresp;
+//		       - the triple (k, id, t) is added to keys
+// 		       - attacker knowledge is unchanged
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
   no k <: s.keys
   valid_token[t]
@@ -142,9 +149,11 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
 //
 // YOUR TASK: Describe in comments the pre and post-conditions (1 mark)
 //
-// Precondition:  <FILL IN HERE>
+// Precondition:  - None
 //
-// Postcondition: <FILL IN HERE> 
+// Postcondition: - network now contains a valid ConfirmRequest message for
+//                  id and t;
+//		       - keys and attacker_knowledge unchanged 
 pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
   some mreq : Message | is_confirm_request[mreq, id, t] and 
     s'.network = s.network + mreq
