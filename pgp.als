@@ -128,8 +128,7 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 //		      - the server doesn't have any (Key, Identity, Token) triples contain t;
 //
 // Postcondition: - network now contains a valid RegisterResponse message for id and t;
-// 		       - in the current network,  the RegisterRequest message mreq has been
-//			replaced by the RegisterResponse message mresp;
+// 		       - the RegisterRequest message has been removed from the network
 //		       - the triple (k, id, t) is added to keys
 // 		       - attacker knowledge is unchanged
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
@@ -206,7 +205,13 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
 pred user_recv_register_response[s,s' : State] {
-  // <FILL IN HERE>
+  some mresp, mreq:Message | (
+	is_register_response[mresp,UserId,t] and 
+	is_confirm_request[mreq,UserId,t] and 
+	mresp in s.network and s'.network = (s.network - mresp) + mreq
+	)
+	s'.keys = s.keys
+  	s'.attacker_knowledge = s.attacker_knowledge
 }
 
 
