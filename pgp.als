@@ -205,7 +205,7 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
 pred user_recv_register_response[s,s' : State] {
-  some mresp, mreq:Message | (
+  some mresp, mreq:Message, t:Token | (
 	is_register_response[mresp,UserId,t] and 
 	is_confirm_request[mreq,UserId,t] and 
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
