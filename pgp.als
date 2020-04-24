@@ -294,8 +294,8 @@ run attacker_can_learn_tokens for 7 expect 1
 // It describes the potential ability of the attacker to remove messages
 // from the network
 pred attacker_can_drop[s,s' : State] {
-  attacker_action[s,s'] 
-  // <ADD STUFF HERE>
+  attacker_action[s,s'] and
+  some m:Message | m in s.network and no s'.network
 }
 
 // NOTE: you will probably need to tweak the bound 
@@ -309,8 +309,10 @@ run attacker_can_drop for 3
 // It describes the potential ability of the attacker to modify
 // messages on the network
 pred attacker_can_modify_messages[s,s' : State] {
-  attacker_action[s,s'] 
-  // <ADD STUFF HERE>
+  attacker_action[s,s'] and
+  some m, m':Message | ( m in s.network and
+	m' in s'.network and 
+	no m&m')
 }
 
 // NOTE: you will probably need to tweak the bound 
@@ -324,8 +326,16 @@ run attacker_can_modify_messages for 3
 // message onto the network whose addr is UserId when there was no
 // UserId message already on the network
 pred attacker_can_forge_id[s,s' : State] {
-  attacker_action[s,s']
-  // <ADD STUFF HERE>
+  attacker_action[s,s'] and 
+  ((some m, m':Message | m in s.network and 
+	m' in s'.network and 
+	m'.content in m.content and 
+	m'.subject in m.subject and 
+	m.addr = AttackerId and 
+	m'.addr = UserId)or(
+	some m:Message | no s.network and 
+	m in s'.network and 
+	m.addr = UserId))
 }
 
 // NOTE: you will probably need to tweak the bound 
@@ -339,8 +349,8 @@ run attacker_can_forge_id for 3
 // It describes the potential ability of the attacker to put a new
 // message onto the network when there was no message before
 pred attacker_can_inject[s,s' : State] {
-  attacker_action[s,s'] 
-  // <ADD STUFF HERE>
+  attacker_action[s,s'] and
+  some m:Message | no s.network and m in s'.network
 }
 
 // NOTE: you will probably need to tweak the bound 
