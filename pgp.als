@@ -148,7 +148,7 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
 //
 // YOUR TASK: Describe in comments the pre and post-conditions (1 mark)
 //
-// Precondition:  - network has no Message after user_recv_register_response 
+// Precondition:  - network contained no Message
 //
 // Postcondition: - network now contains a valid ConfirmRequest message for
 //                  	      id and t;
@@ -204,9 +204,6 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                - The RegisterResponse message has been removed from
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
-
-
-// original 
 pred user_recv_register_response[s,s' : State] {
   some mresp, mreq : Message, id : Identity, t : Token | (
 	is_register_response[mresp,id,t] and 
@@ -216,25 +213,6 @@ pred user_recv_register_response[s,s' : State] {
 	s'.keys = s.keys
   	s'.attacker_knowledge = s.attacker_knowledge
 }
-/*
-pred user_recv_register_response[s,s'' : State] {
-  some mresp : Message, s' : State, id : Identity, t : Token | (
-	is_register_response[mresp, id, t] and  
-	mresp in s.network and s'.network = (s.network - mresp) and
-	s'.keys = s.keys and
-  	s'.attacker_knowledge = s.attacker_knowledge and
-	send_confirm_request[s', s'', id, t]
-	)
-}
-/*
-// called by the method above
-pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
-  some mreq : Message | is_confirm_request[mreq, id, t] and 
-    s'.network = s.network + mreq
-  s'.keys = s.keys
-  s'.attacker_knowledge = s.attacker_knowledge
-}
-*/
 
 // This predicate represents the actions of the server. These are
 // receiving RegisterRequest messages and ConfirmRequest messages
@@ -355,7 +333,7 @@ pred attacker_can_forge_id[s,s' : State] {
   attacker_action[s,s'] and 
   ((some m, m':Message | m in s.network and 
 	m' in s'.network and 
-	m'.content in m.content and 
+	m'.contents in m.contents and 
 	m'.subject in m.subject and 
 	m.addr = AttackerId and 
 	m'.addr = UserId)or(
