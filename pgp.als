@@ -108,9 +108,9 @@ pred is_confirm_request[m : Message, id : Identity, t : Token] {
 //
 // Precondition:  - None
 //
-// Postcondition: - network now contains a valid RegisterRequest message for
-//                  k and id; 
-//                - keys and attacker_knowledge unchanged 
+// Postcondition: - network now contains a valid RegisterRequest message for 
+//                             k and id; 
+//                          - keys and attacker_knowledge unchanged 
 pred send_register_request[s,s': State, k : Key, id: Identity] {
   some m : Message | is_register_request[m,k,id] and s'.network = s.network + m 
   s'.keys = s.keys
@@ -128,9 +128,9 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 //		      - the server doesn't have any (Key, Identity, Token) triples contain t;
 //
 // Postcondition: - network now contains a valid RegisterResponse message for id and t;
-// 		       - the RegisterRequest message has been removed from the network
-//		       - the triple (k, id, t) is added to keys
-// 		       - attacker knowledge is unchanged
+// 		            - the RegisterRequest message has been removed from the network
+//		            - the triple (k, id, t) is added to keys
+// 		            - attacker knowledge is unchanged
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
   no k <: s.keys
   valid_token[t]
@@ -148,11 +148,11 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
 //
 // YOUR TASK: Describe in comments the pre and post-conditions (1 mark)
 //
-// Precondition:  - None
+// Precondition:  - network has no Message after user_recv_register_response 
 //
 // Postcondition: - network now contains a valid ConfirmRequest message for
-//                  id and t;
-//		       - keys and attacker_knowledge unchanged 
+//                  	      id and t;
+//		            - keys and attacker_knowledge unchanged 
 pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
   some mreq : Message | is_confirm_request[mreq, id, t] and 
     s'.network = s.network + mreq
@@ -164,10 +164,10 @@ pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
 // the association between key k, identity id, using token t
 //
 // Precondition:  - network contains a valid ConfirmRequest msg for id and t
-//                - the server has a triple (k,id,t) stored
+//                          - the server has a triple (k,id,t) stored
 // Postcondition: - the ConfirmRequest message is removed from the network
-//                - the triple (k,id,t) is updated to (k,id,CONFIRMED)
-//                - attacker knowledge is unchanged
+//                           - the triple (k,id,t) is updated to (k,id,CONFIRMED)
+//                           - attacker knowledge is unchanged
 pred recv_confirm_request[s, s' : State, k : Key, id : Identity, t : Token] {
   some mreq : Message | (is_confirm_request[mreq, id, t] and 
                          mreq in s.network and 
@@ -204,16 +204,37 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                - The RegisterResponse message has been removed from
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
+
+
+// original 
 pred user_recv_register_response[s,s' : State] {
-  some mresp, mreq:Message, t:Token | (
-	is_register_response[mresp,UserId,t] and 
-	is_confirm_request[mreq,UserId,t] and 
+  some mresp, mreq : Message, id : Identity, t : Token | (
+	is_register_response[mresp,id,t] and 
+	is_confirm_request[mreq,id,t] and 
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
 	)
 	s'.keys = s.keys
   	s'.attacker_knowledge = s.attacker_knowledge
 }
-
+/*
+pred user_recv_register_response[s,s'' : State] {
+  some mresp : Message, s' : State, id : Identity, t : Token | (
+	is_register_response[mresp, id, t] and  
+	mresp in s.network and s'.network = (s.network - mresp) and
+	s'.keys = s.keys and
+  	s'.attacker_knowledge = s.attacker_knowledge and
+	send_confirm_request[s', s'', id, t]
+	)
+}
+/*
+// called by the method above
+pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
+  some mreq : Message | is_confirm_request[mreq, id, t] and 
+    s'.network = s.network + mreq
+  s'.keys = s.keys
+  s'.attacker_knowledge = s.attacker_knowledge
+}
+*/
 
 // This predicate represents the actions of the server. These are
 // receiving RegisterRequest messages and ConfirmRequest messages
@@ -239,11 +260,16 @@ pred user_action[s,s' : State] {
 // it says the attacker can NOT do
 pred attacker_action[s,s' : State] {
   s'.keys = s.keys
+  // steal user's token
   s'.attacker_knowledge = s.attacker_knowledge + (s.network.contents & Token)
-  (no s'.network or
+  // delete the net package -> lost packgae
+  (no s'.network or 
+  // modify content -> change the userKey to AttackerKey, with the stolen token if has. 
+  // cause the server store (attackerKey, userId, CONFIRMED)
   (some m, m' : Message | m in s.network and m' in s'.network and 
                           m'.contents in s'.attacker_knowledge + AttackerKey and 
                           m'.addr in m.addr and m'.subject in m.subject)) or
+  // ？？？ starts a new connection with server using stolen token
   (some m' : Message | no s.network and m' in s'.network and
                           m'.contents in s'.attacker_knowledge + AttackerKey and
                           m'.addr = AttackerId)
@@ -312,7 +338,7 @@ pred attacker_can_modify_messages[s,s' : State] {
   attacker_action[s,s'] and
   some m, m':Message | ( m in s.network and
 	m' in s'.network and 
-	no m&m')
+	m != m')
 }
 
 // NOTE: you will probably need to tweak the bound 
