@@ -36,7 +36,8 @@ one sig RegisterRequest, RegisterResponse,
 sig Message {
   addr : Identity,
   subject : MessageSubject,
-  contents : set Data
+  contents : set Data,
+  key_check : Key // TASK3
 }
 
 // A special value to indicate that an identity has been confirmed.
@@ -138,6 +139,7 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
     is_register_request[mreq,k,id] and 
     is_register_response[mresp,id,t] and
     mreq in s.network and s'.network = (s.network - mreq) + mresp
+    and s'.network.key_check = k // TASK3
   )
   t not in s.keys[Key][Identity]
   s'.keys = s.keys + (k -> id -> t) 
@@ -156,8 +158,8 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
 pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
   some mreq : Message | is_confirm_request[mreq, id, t] and 
     s'.network = s.network + mreq
-  s'.keys = s.keys
-  s'.attacker_knowledge = s.attacker_knowledge
+    s'.keys = s.keys
+    s'.attacker_knowledge = s.attacker_knowledge
 }
 
 // Represents the server receiving a ConfirmRequest message to confirm
@@ -204,10 +206,12 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                - The RegisterResponse message has been removed from
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
+
 pred user_recv_register_response[s,s' : State] {
-  some mresp, mreq : Message, id : Identity, t : Token | (
-	is_register_response[mresp,id,t] and 
-	is_confirm_request[mreq,id,t] and 
+  some mresp, mreq : Message, t : Token | (
+	is_register_response[mresp, UserId, t] and 
+	is_confirm_request[mreq, UserId, t] and 
+	mresp.key_check in UserKey and // TASK3
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
 	)
 	s'.keys = s.keys
@@ -329,6 +333,7 @@ run attacker_can_modify_messages for 3
 // It describes the potential ability of the attacker to put a
 // message onto the network whose addr is UserId when there was no
 // UserId message already on the network
+/*
 pred attacker_can_forge_id[s,s' : State] {
   attacker_action[s,s'] and 
   ((some m, m':Message | m in s.network and 
@@ -341,7 +346,12 @@ pred attacker_can_forge_id[s,s' : State] {
 	m in s'.network and 
 	m.addr = UserId))
 }
-
+*/
+pred attacker_can_forge_id[s,s' : State] {
+  attacker_action[s,s'] and 
+  (some m : set Message, m' : Message | m = s.prevs.network + s.network and 
+	m' in s'.network and UserId not in m.addr and m'.addr = UserId)
+}
 // NOTE: you will probably need to tweak the bound 
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
