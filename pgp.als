@@ -2,7 +2,7 @@
  *
  * SWEN90010 2020 - Assignment 2
  *
- * Submission: <studentid-1> <studentid-2>
+ * Submission: <Yinsong-Chen-945600> <Ning-Jin-889797>
  */
 
 open util/ordering[State] as ord
@@ -33,6 +33,7 @@ one sig RegisterRequest, RegisterResponse,
 // the addr is either the message's sender or the receiver: for Request 
 // messages, addr is the sender; for Response messages, addr is the 
 // intended receiver.
+// the key_check will be used to prevent the attacker tampering the RegisterRequest message
 sig Message {
   addr : Identity,
   subject : MessageSubject,
@@ -129,9 +130,10 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 //		      - the server doesn't have any (Key, Identity, Token) triples contain t;
 //
 // Postcondition: - network now contains a valid RegisterResponse message for id and t;
-// 		            - the RegisterRequest message has been removed from the network
-//		            - the triple (k, id, t) is added to keys
-// 		            - attacker knowledge is unchanged
+// 		       - the RegisterRequest message has been removed from the network
+//		       - the triple (k, id, t) is added to keys
+// 		       - attacker knowledge is unchanged
+//		       - (Task 3) the RegisterResponse message's key_check attribute is k
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
   no k <: s.keys
   valid_token[t]
@@ -158,8 +160,8 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
 pred send_confirm_request[s,s' : State, id : Identity, t : Token] {
   some mreq : Message | is_confirm_request[mreq, id, t] and 
     s'.network = s.network + mreq
-    s'.keys = s.keys
-    s'.attacker_knowledge = s.attacker_knowledge
+   s'.keys = s.keys
+   s'.attacker_knowledge = s.attacker_knowledge
 }
 
 // Represents the server receiving a ConfirmRequest message to confirm
@@ -200,13 +202,14 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //
 // Precondition:  - There is a valid RegisterReponse message on the network
 //                  for UserId containing some token t
+// 		      - (Task 3) The key_check attribute in the RegisterReponse message 
+//		is equal to UserKey
 //                
 // Postcondition: - There is a valid ConfirmRequest message on the network
 //                  for the user's id UserId and token t
 //                - The RegisterResponse message has been removed from
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
-
 pred user_recv_register_response[s,s' : State] {
   some mresp, mreq : Message, t : Token | (
 	is_register_response[mresp, UserId, t] and 
@@ -214,8 +217,8 @@ pred user_recv_register_response[s,s' : State] {
 	mresp.key_check in UserKey and // TASK3
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
 	)
-	s'.keys = s.keys
-  	s'.attacker_knowledge = s.attacker_knowledge
+  s'.keys = s.keys
+  s'.attacker_knowledge = s.attacker_knowledge
 }
 
 // This predicate represents the actions of the server. These are
@@ -242,16 +245,11 @@ pred user_action[s,s' : State] {
 // it says the attacker can NOT do
 pred attacker_action[s,s' : State] {
   s'.keys = s.keys
-  // steal user's token
   s'.attacker_knowledge = s.attacker_knowledge + (s.network.contents & Token)
-  // delete the net package -> lost packgae
   (no s'.network or 
-  // modify content -> change the userKey to AttackerKey, with the stolen token if has. 
-  // cause the server store (attackerKey, userId, CONFIRMED)
   (some m, m' : Message | m in s.network and m' in s'.network and 
                           m'.contents in s'.attacker_knowledge + AttackerKey and 
                           m'.addr in m.addr and m'.subject in m.subject)) or
-  // ？？？ starts a new connection with server using stolen token
   (some m' : Message | no s.network and m' in s'.network and
                           m'.contents in s'.attacker_knowledge + AttackerKey and
                           m'.addr = AttackerId)
@@ -310,7 +308,7 @@ pred attacker_can_drop[s,s' : State] {
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
 //            0 if the attacker does not have this ability
-run attacker_can_drop for 3
+run attacker_can_drop for 3 expect 1
 
 
 // YOUR TASK: Implement the remainder of this predicate.
@@ -320,20 +318,21 @@ pred attacker_can_modify_messages[s,s' : State] {
   attacker_action[s,s'] and
   some m, m':Message | ( m in s.network and
 	m' in s'.network and 
-	m != m')
+	( m.addr != m'.addr or 
+	  m.subject != m'.subject or 
+	  m.contents!=m'.contents))
 }
 
 // NOTE: you will probably need to tweak the bound 
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
 //            0 if the attacker does not have this ability
-run attacker_can_modify_messages for 3
+run attacker_can_modify_messages for 3 expect 1
 
 // YOUR TASK: Implement the remainder of this predicate.
 // It describes the potential ability of the attacker to put a
 // message onto the network whose addr is UserId when there was no
 // UserId message already on the network
-/*
 pred attacker_can_forge_id[s,s' : State] {
   attacker_action[s,s'] and 
   ((some m, m':Message | m in s.network and 
@@ -342,21 +341,16 @@ pred attacker_can_forge_id[s,s' : State] {
 	m'.subject in m.subject and 
 	m.addr = AttackerId and 
 	m'.addr = UserId)or(
-	some m:Message | no s.network and 
-	m in s'.network and 
-	m.addr = UserId))
+	some m':Message | no s.network and 
+	m' in s'.network and 
+	m'.addr = UserId))
 }
-*/
-pred attacker_can_forge_id[s,s' : State] {
-  attacker_action[s,s'] and 
-  (some m : set Message, m' : Message | m = s.prevs.network + s.network and 
-	m' in s'.network and UserId not in m.addr and m'.addr = UserId)
-}
+
 // NOTE: you will probably need to tweak the bound 
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
 //            0 if the attacker does not have this ability
-run attacker_can_forge_id for 3
+run attacker_can_forge_id for 3 expect 0
 
 
 // YOUR TASK: Implement the remainder of this predicate.
@@ -371,7 +365,7 @@ pred attacker_can_inject[s,s' : State] {
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
 //            0 if the attacker does not have this ability
-run attacker_can_inject for 3
+run attacker_can_inject for 3 expect 1
 
 
 // STATE PREDICATES /////////////////////////////////////////////////////
@@ -446,11 +440,26 @@ assert no_bad_states {
 //
 // YOUR TASK (3 marks): Describe the counter-example (attack) here in comments
 //
-// <DESCRIBE EACH STEP OF THE ATTACK HERE>
+// After the user sent the Register Request message to the network,
+// the attacker will intercept the Register Request message, 
+// modify the content from the UserKey to AttackerKey,
+// then send the modified Register Request message to the server. 
 //
 // In Task 3 you will modify the protocol to make the predicate hold
 check no_bad_states for 5 but 2 Key, 2 Identity, 3 Token, 6 State
 
 // HOW WE FIXED THE VULNERABILITY
 //
-// <FILL IN HERE>
+// - To fix the vulunerability, we add a key_check attribute in the message class.
+// - We also modified the recv_register_request predicate to make the server will add the key it accepted 
+//   to the key_check attribute of the Register Response message.
+// - Another modification we have done is that we modify the user_recv_register_response predicate to add a 
+//   precondition that the key_check attribute of the Register Response message should be UserId. 
+// - Hence, totally we have done three modifications and each modification has been added an "Task 3" 
+//   comment as postfix.
+// - As a result, now after the attacker modified the key of Register Request message, the server will add
+//   the modified key which is AttackerKey to the key_check part of the Register Response message. When 
+//   the user received the Register Response message, he would check if the key_check attribute in the 
+//   Register Response message is equal to the UserKey he sent. If the key_check attribute isn't equal to
+//   the UserKey, it means the Register Request message has been modified by the attacker. Therefore, the 
+//   user will reject to confirm the registration request. 
