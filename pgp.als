@@ -33,12 +33,10 @@ one sig RegisterRequest, RegisterResponse,
 // the addr is either the message's sender or the receiver: for Request 
 // messages, addr is the sender; for Response messages, addr is the 
 // intended receiver.
-// the key_check will be used to prevent the attacker tampering the RegisterRequest message
 sig Message {
   addr : Identity,
   subject : MessageSubject,
   contents : set Data,
-  key_check : Key // TASK3
 }
 
 // A special value to indicate that an identity has been confirmed.
@@ -132,8 +130,7 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 // Postcondition: - network now contains a valid RegisterResponse message for id and t;
 // 		       - the RegisterRequest message has been removed from the network
 //		       - the triple (k, id, t) is added to keys
-// 		       - attacker knowledge is unchanged
-//		       - (Task 3) the RegisterResponse message's key_check attribute is k
+// 		       - attacker knowledge is unchanged	       
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
   no k <: s.keys
   valid_token[t]
@@ -141,7 +138,6 @@ pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
     is_register_request[mreq,k,id] and 
     is_register_response[mresp,id,t] and
     mreq in s.network and s'.network = (s.network - mreq) + mresp
-    and s'.network.key_check = k // TASK3
   )
   t not in s.keys[Key][Identity]
   s'.keys = s.keys + (k -> id -> t) 
@@ -201,9 +197,7 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //       it was modified.
 //
 // Precondition:  - There is a valid RegisterReponse message on the network
-//                  for UserId containing some token t
-// 		      - (Task 3) The key_check attribute in the RegisterReponse message 
-//		is equal to UserKey
+//                  for UserId containing some token t    
 //                
 // Postcondition: - There is a valid ConfirmRequest message on the network
 //                  for the user's id UserId and token t
@@ -214,7 +208,6 @@ pred user_recv_register_response[s,s' : State] {
   some mresp, mreq : Message, t : Token | (
 	is_register_response[mresp, UserId, t] and 
 	is_confirm_request[mreq, UserId, t] and 
-	mresp.key_check in UserKey and // TASK3
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
 	)
   s'.keys = s.keys
@@ -447,19 +440,3 @@ assert no_bad_states {
 //
 // In Task 3 you will modify the protocol to make the predicate hold
 check no_bad_states for 5 but 2 Key, 2 Identity, 3 Token, 6 State
-
-// HOW WE FIXED THE VULNERABILITY
-//
-// - To fix the vulunerability, we add a key_check attribute in the message class.
-// - We also modified the recv_register_request predicate to make the server will add the key it accepted 
-//   to the key_check attribute of the Register Response message.
-// - Another modification we have done is that we modify the user_recv_register_response predicate to add a 
-//   precondition that the key_check attribute of the Register Response message should be UserId. 
-// - Hence, totally we have done three modifications and each modification has been added an "Task 3" 
-//   comment as postfix.
-// - As a result, now after the attacker modified the key of Register Request message, the server will add
-//   the modified key which is AttackerKey to the key_check part of the Register Response message. When 
-//   the user received the Register Response message, he would check if the key_check attribute in the 
-//   Register Response message is equal to the UserKey he sent. If the key_check attribute isn't equal to
-//   the UserKey, it means the Register Request message has been modified by the attacker. Therefore, the 
-//   user will reject to confirm the registration request. 
