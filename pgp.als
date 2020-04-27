@@ -88,9 +88,10 @@ pred is_register_request[m : Message, k : Key, id : Identity] {
 }
 
 // whether message is a valid RegisterResponse message for id and t
-pred is_register_response[m : Message, id: Identity, t : Token] {
-  m.addr = id and m.subject = RegisterResponse and t = m.contents
-}
+// (Task3) we make the content of message will also record the Key in the RegisterRequest message
+pred is_register_response[m : Message, id: Identity, t : Token, k: Key] {
+  m.addr = id and m.subject = RegisterResponse and m.contents = t + k
+}//Task3
 
 // whether message is a valid ConfirmRequest message for id and t
 pred is_confirm_request[m : Message, id : Identity, t : Token] {
@@ -127,20 +128,28 @@ pred send_register_request[s,s': State, k : Key, id: Identity] {
 //		      - network contained a valid RegisterRequest message for k and id;
 //		      - the server doesn't have any (Key, Identity, Token) triples contain t;
 //
-// Postcondition: - network now contains a valid RegisterResponse message for id and t;
+// Postcondition: - (Task3)network now contains a valid RegisterResponse message for id, t and k;
 // 		       - the RegisterRequest message has been removed from the network
+//                        - (Task 3) the triple that contains the id and ends with a non-confirmed 
+//                           token is removed. This makes sure there is always only one register request
+//                           been processed at one time.
 //		       - the triple (k, id, t) is added to keys
-// 		       - attacker knowledge is unchanged	       
+// 		       - attacker knowledge is unchanged	     
 pred recv_register_request[s, s' : State, k : Key, id: Identity, t : Token] {
   no k <: s.keys
   valid_token[t]
   some mreq, mresp : Message | ( 
     is_register_request[mreq,k,id] and 
-    is_register_response[mresp,id,t] and
+    is_register_response[mresp,id,t,k] and//Task3
     mreq in s.network and s'.network = (s.network - mreq) + mresp
   )
   t not in s.keys[Key][Identity]
-  s'.keys = s.keys + (k -> id -> t) 
+  (some k':Key, t':Token | (t' in s.keys[k'][id] and
+	t' not in CONFIRMED and 
+	s'.keys = s.keys - (k'->id->t') + (k -> id -> t) ) )or 
+  (all k':Key, t':Token | ((t' not in s.keys[k'][id] 
+	or t' in CONFIRMED) and 
+	s'.keys = s.keys + (k -> id -> t) ))//Task3
   s'.attacker_knowledge = s.attacker_knowledge
 }
 
@@ -196,8 +205,8 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //       Make sure you update the comments if you do that to describe how
 //       it was modified.
 //
-// Precondition:  - There is a valid RegisterReponse message on the network
-//                  for UserId containing some token t    
+// Precondition:  - (Task3) There is a valid RegisterReponse message on the network
+//                  for UserId and UserKey containing some token t    
 //                
 // Postcondition: - There is a valid ConfirmRequest message on the network
 //                  for the user's id UserId and token t
@@ -205,8 +214,8 @@ pred lookup_key[s : State, k : Key, id : Identity] {
 //                  the network
 //                - Attacker knowledge and server keys unchanged 
 pred user_recv_register_response[s,s' : State] {
-  some mresp, mreq : Message, t : Token | (
-	is_register_response[mresp, UserId, t] and 
+  some mresp, mreq : Message, t : Token| (
+	is_register_response[mresp, UserId, t, UserKey] and //Task3
 	is_confirm_request[mreq, UserId, t] and 
 	mresp in s.network and s'.network = (s.network - mresp) + mreq
 	)
@@ -287,7 +296,7 @@ pred attacker_can_learn_tokens[s,s' : State] {
 
 // clearly the attacker has this ability (although we need a relatively
 // large bound to find it). So we annotate this is "expect 1"
-run attacker_can_learn_tokens for 7 expect 1
+run attacker_can_learn_tokens for 6 expect 1
 
 // YOUR TASK: Implement the remainder of this predicate.
 // It describes the potential ability of the attacker to remove messages
@@ -343,7 +352,7 @@ pred attacker_can_forge_id[s,s' : State] {
 // YOUR TASK: annotate this with "expect 0/1"
 //            1 if the attacker has this ability
 //            0 if the attacker does not have this ability
-run attacker_can_forge_id for 3 expect 0
+run attacker_can_forge_id for 6 expect 0
 
 
 // YOUR TASK: Implement the remainder of this predicate.
@@ -435,8 +444,54 @@ assert no_bad_states {
 //
 // After the user sent the Register Request message to the network,
 // the attacker will intercept the Register Request message, 
-// modify the content from the UserKey to AttackerKey,
-// then send the modified Register Request message to the server. 
+// and modify the content from the {UserKey} to {AttackerKey},
+// then send this modified Register Request message to the server. 
+// As a consequence, the server records the triple (AttackerKey, UserId, token).
+// Due to the fact that the user and the server use only Identity and Token to make
+// confirmation, the invalid triple will finally be CONFIRMED.
 //
 // In Task 3 you will modify the protocol to make the predicate hold
 check no_bad_states for 5 but 2 Key, 2 Identity, 3 Token, 6 State
+
+// HOW WE FIXED THE VULNERABILITY
+// - There are two vulunerabilities: 
+//              - Attacker can modify the RegisterRequest message and make the server 
+//  	         store (AttackerKey, UserId, token) 
+//              - Attacker can learn the token and modify the ConfirmRequest message, 
+//	         which makes the server set (AttackerKey, UserId, token) to (AttackerKey, UserId, CONFIRMED).
+//	         The process for this vulnerability is a little bit tricky. 
+//		- The attacker will use first vulnerability to make the server store (AttackerKey, UserId, token0). 
+//		- When the server sends Response message, the attacker will store the token0 in the 
+//		  Response message to the attacker knowledge. 
+//		- Then as we have fixed the first vulnerability, the user will not confirm the AttackerKey. 
+//		- When the same user send another Register Request message, the attacker
+//		  will let the user and server run anything normally. 
+// 		- Then the server will store another triple (UserKey, UserId, token1) and send the Response 
+//		  message to the user.
+//		- Finally, when the user send the Confirm message to the server, the attacker will intercept 
+//		  the Confirm message and modify the token 1 for UserKey to token 0 for AttackerKey.
+//		- By doing this, the server has been cheated and store (AttackerKey, UserId, CONFIRMED).
+// - To fix the first vulnerability, we modified the is_register_response predicate. 
+//   	- After the modification, now a valid Register Response message will also contain 
+//  	  the Key from the Register Request message in its content. 
+//   	- As we haved added an new argument k:Key in the is_register_response predicate, we also
+//   	  needed to update the usage of  is_register_response in both recv_register_request predicate 
+//  	  and user_recv_register_response predicate. 
+//  	- Now when the server receives the Register Request message, it will write both the Key from
+//  	  the Register Request message and the Token to the content of Register Response message.
+//  	- When the user receives the Register Response message, he will use
+//  	  is_register_response[mresp, UserId, t, UserKey] to check if this is a valid 
+//   	 Register Response message with correct UserKey in its content. 
+//   	- If the UserKey has been tampered to AttackerKey, the user will realize and reject
+//  	  to confirm it. 
+// - To fix the second vulunerability, we rectify the protocol:
+//	- For each Identity(id), the server's keys will only have one triple that is (Key, id, Token) and all other
+//          triples of this id must be CONFIRMED. That is, an id can only have one register process at a time.
+//        - In server recv_register_request, the server will first check if there is already a register request for the same 
+//          id under processing, in other words, if there is a key k' and token t' safisfy that (k', id, t') is in the server and 
+//	   t' is not CONFIRMED.
+//        - If there is, the server will delete this triple and store the new register request triple.
+//        - If there isn't, the server will store this register request triple.
+//        - This will prevent the attacker to make use of the second vulnerability.
+// - There are totally four modifications to fix these two vulnerabilities. 
+// - Each of the modification has been added a "//Task3" comment as postfix.
